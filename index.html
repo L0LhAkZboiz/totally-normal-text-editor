@@ -39,7 +39,7 @@
     <style>
         @font-face {
             font-family: 'Valorant';
-            src: url('Valorant-Font.ttf') format('truetype');
+            src: url('./Valorant-Font.ttf') format('truetype');
         }
 
         /* Base styling for the application */
@@ -419,7 +419,7 @@
         let currentRange = null;
 
         // Set up the audio object
-        const typingAudio = new Audio('coconutmall.mp3');
+        const typingAudio = new Audio('./coconutmall.mp3');
         typingAudio.loop = true;
 
         document.addEventListener('selectionchange', () => {
