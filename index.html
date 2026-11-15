@@ -418,6 +418,10 @@
         let testTargetText = "";
         let currentRange = null;
 
+        // Set up the audio object
+        const typingAudio = new Audio('coconutmall.mp3');
+        typingAudio.loop = true;
+
         document.addEventListener('selectionchange', () => {
             const sel = window.getSelection();
             if (sel.rangeCount > 0 && editor.contains(sel.anchorNode)) {
@@ -471,6 +475,10 @@
 
             document.getElementById('typingModal').style.display = 'flex';
             setTimeout(() => document.getElementById('typingInput').focus(), 100);
+
+            // Play the audio when the modal opens
+            typingAudio.currentTime = 0; // Reset to beginning
+            typingAudio.play().catch(e => console.log("Browser blocked audio autoplay:", e));
         }
 
         document.getElementById('typingInput').addEventListener('input', function(e) {
@@ -529,6 +537,10 @@
         function hideTypingModal() {
             document.getElementById('typingModal').style.display = 'none';
             document.getElementById('typingInput').blur();
+
+            // Stop the audio when the modal closes
+            typingAudio.pause();
+            typingAudio.currentTime = 0;
         }
 
         function formatFont(fontName) {
