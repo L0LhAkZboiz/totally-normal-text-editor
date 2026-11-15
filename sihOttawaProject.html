@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A totally normal Text Editor</title>
+    
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Configure Tailwind to use your custom color palette -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'pearl-aqua': { 50: "#ecf8f5", 100: "#d9f2ea", 200: "#b3e5d6", 300: "#8dd8c1", 400: "#67cbad", 500: "#41be98", 600: "#34987a", 700: "#27725b", 800: "#1a4c3d", 900: "#0d261e", 950: "#091b15" },
+                        'muted-teal': { 50: "#f0f5f3", 100: "#e0ebe7", 200: "#c2d6d0", 300: "#a3c2b8", 400: "#85ada0", 500: "#669989", 600: "#527a6d", 700: "#3d5c52", 800: "#293d37", 900: "#141f1b", 950: "#0e1513" },
+                        'cool-steel': { 50: "#f1f3f4", 100: "#e3e7e8", 200: "#c7ced1", 300: "#abb6ba", 400: "#8f9ea3", 500: "#73858c", 600: "#5c6b70", 700: "#455054", 800: "#2e3538", 900: "#171b1c", 950: "#101314" },
+                        'dusty-mauve': { 50: "#f4f1f3", 100: "#e9e2e7", 200: "#d2c6ce", 300: "#bca9b6", 400: "#a58d9d", 500: "#8f7085", 600: "#725a6a", 700: "#564350", 800: "#392d35", 900: "#1d161b", 950: "#141013" }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- html2pdf for PDF export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" crossorigin="anonymous"></script>
+    
+    <!-- FileSaver for saving files -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js" crossorigin="anonymous"></script>
+
+    <!-- Mammoth for parsing DOCX files -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js" crossorigin="anonymous"></script>
+
+    <style>
+        @font-face {
+            font-family: 'Valorant';
+            src: url('Valorant Font.ttf') format('truetype');
+        }
+
+        /* Base styling for the application */
+        body {
+            font-family: 'Inter', sans-serif;
+            /* Background color moved to Tailwind class on body */
+        }
+        
+        /* Toolbar styling */
+        .toolbar-container {
+            gap: clamp(0.125rem, 0.5vw, 0.5rem);
+            padding-left: clamp(0.25rem, 1vw, 1rem);
+            padding-right: clamp(0.25rem, 1vw, 1rem);
+        }
+        /* Subtle scrollbar for toolbar */
+        .toolbar-container::-webkit-scrollbar {
+            height: 4px;
+        }
+        .toolbar-container::-webkit-scrollbar-track {
+            background: #e0ebe7; /* muted-teal-100 */
+        }
+        .toolbar-container::-webkit-scrollbar-thumb {
+            background: #41be98; /* pearl-aqua-500 */
+            border-radius: 4px;
+        }
+        .toolbar-container::-webkit-scrollbar-thumb:hover {
+            background: #34987a; /* pearl-aqua-600 */
+        }
+
+        .toolbar-btn {
+            display: flex;
+            align-items: center;
+            gap: clamp(0.125rem, 0.4vw, 0.5rem);
+            padding: clamp(0.25rem, 0.5vw, 0.5rem) clamp(0.25rem, 0.8vw, 1rem);
+            border-radius: 0.375rem;
+            color: #3d5c52; /* muted-teal-700 */
+            background-color: transparent;
+            transition: all 0.2s ease;
+            font-size: clamp(0.65rem, 1.2vw, 0.875rem);
+            font-weight: 500;
+            white-space: nowrap;
+        }
+        .toolbar-btn:hover {
+            background-color: #e3e7e8; /* cool-steel-100 */
+            color: #171b1c; /* cool-steel-900 */
+        }
+        
+        /* Scale icons inside toolbar buttons */
+        .toolbar-btn i {
+            font-size: clamp(0.7rem, 1.4vw, 1rem);
+        }
+
+        /* Dynamic divider */
+        .toolbar-divider {
+            width: 1px;
+            height: clamp(1rem, 3vw, 1.5rem);
+            background-color: #c7ced1; /* cool-steel-200 */
+            margin: 0 clamp(0.1rem, 0.5vw, 0.5rem);
+            flex-shrink: 0;
+        }
+        
+        /* Dynamic color picker */
+        .color-picker-input {
+            width: clamp(1.2rem, 2vw, 1.5rem);
+            height: clamp(1.2rem, 2vw, 1.5rem);
+            flex-shrink: 0;
+        }
+        
+        /* The editor "paper" page styling */
+        #editor-container {
+            width: 100%;
+            max-width: 816px; 
+            min-height: 1056px; 
+            background-color: white;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            margin: 2rem auto;
+            padding: 1in;
+        }
+
+        #editor {
+            width: 100%;
+            min-height: 100%;
+            outline: none;
+            font-family: 'Times New Roman', Times, serif;
+            font-size: 12pt;
+            line-height: 1.5;
+            color: #000;
+        }
+        
+        #editor p { margin-bottom: 1em; }
+        
+        /* Hide scrollbar for cleaner UI but keep functionality */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f3f4; /* cool-steel-50 */
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #abb6ba; /* cool-steel-300 */
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #8f9ea3; /* cool-steel-400 */
+        }
+    </style>
+</head>
+<body class="flex flex-col h-screen overflow-hidden bg-pearl-aqua-800">
+
+    <!-- Difficulty Modal -->
+    <div id="difficultyModal" class="fixed inset-0 bg-cool-steel-950/60 z-[100] flex items-center justify-center">
+        <div class="bg-cool-steel-50 p-6 rounded-lg shadow-xl text-center max-w-sm w-full border border-cool-steel-200">
+            <h2 class="text-2xl font-bold mb-6 text-cool-steel-900">Select Difficulty</h2>
+            <div class="flex flex-col gap-3">
+                <button class="bg-pearl-aqua-500 text-cool-steel-950 px-4 py-3 rounded font-semibold hover:bg-pearl-aqua-600 transition shadow" onclick="setDifficulty('Easy')">Normal</button>
+                <button class="bg-dusty-mauve-500 text-white px-4 py-3 rounded font-semibold hover:bg-dusty-mauve-600 transition shadow" onclick="setDifficulty('Stupid')">Stupid</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Typing Test Modal -->
+    <div id="typingModal" class="fixed inset-0 bg-cool-steel-950/60 z-[100] hidden items-center justify-center" style="display: none;">
+        <div class="bg-cool-steel-50 p-6 rounded-lg shadow-xl max-w-lg w-full m-4 border border-cool-steel-200">
+            <h2 class="text-xl font-bold mb-2 text-cool-steel-900">Prove Your Worth to Format</h2>
+            <p id="wpmRequirement" class="text-sm text-dusty-mauve-600 font-bold mb-4 hidden" style="display: none;">STUPID MODE: Must type perfectly at 65+ WPM!</p>
+            <div id="testBlurbDisplay" class="mb-4 p-4 bg-cool-steel-100 border border-cool-steel-200 rounded text-cool-steel-900 font-mono select-none leading-relaxed">Hello world, I am typing.</div>
+            <textarea id="typingInput" class="w-full border-2 border-cool-steel-300 rounded p-3 font-mono focus:outline-none focus:border-pearl-aqua-500 focus:ring-1 focus:ring-pearl-aqua-500 transition-colors bg-white text-cool-steel-900" rows="4" placeholder="Start typing here..."></textarea>
+            <div class="flex justify-between items-center mt-4">
+                <span id="typingStatus" class="text-sm font-semibold text-cool-steel-600">Typing...</span>
+                <button class="bg-cool-steel-200 text-cool-steel-800 px-4 py-2 rounded hover:bg-cool-steel-300 font-semibold transition" onclick="cancelTest()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- App Title Header -->
+    <div class="w-full bg-cool-steel-950 text-pearl-aqua-200 text-center py-2 font-bold z-20 shadow-md tracking-wide">
+        A Totally Normal Text Editor
+    </div>
+
+    <!-- Top Toolbar -->
+    <div class="bg-cool-steel-50 border-b border-cool-steel-200 shadow-sm py-2 flex items-center z-10 sticky top-0 shrink-0 flex-nowrap overflow-x-auto toolbar-container">
+        
+        <!-- 1. Create New Document -->
+        <button class="toolbar-btn" onclick="createNewDocument()" title="Create New Document">
+            <i class="fa-solid fa-file-circle-plus"></i> New
+        </button>
+        
+        <!-- 2. Load Document -->
+        <button class="toolbar-btn" onclick="triggerLoadDocument()" title="Load Document">
+            <i class="fa-solid fa-folder-open"></i> Load
+        </button>
+        <input type="file" id="fileInput" accept=".html,.htm,.txt,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.doc,application/msword" class="hidden" onchange="loadDocument(event)">
+        
+        <!-- Divider -->
+        <div class="toolbar-divider"></div>
+        
+        <!-- 3. Save Document (.docx) -->
+        <button class="toolbar-btn" onclick="exportToDocx()" title="Save as .docx">
+            <i class="fa-solid fa-file-word"></i> Save
+        </button>
+        
+        <!-- 4. Export as .pdf -->
+        <button class="toolbar-btn" onclick="exportToPdf()" title="Export as PDF">
+            <i class="fa-solid fa-file-pdf"></i> Export as PDF
+        </button>
+        
+        <!-- Divider -->
+        <div class="toolbar-divider"></div>
+
+        <!-- Font Family Selection -->
+        <select class="toolbar-btn border border-cool-steel-200 bg-cool-steel-50 outline-none cursor-pointer py-1" onchange="formatFont(this.value)" title="Change Font">
+            <option value="Times New Roman">Times New Roman</option>
+            <option value="Arial">Arial</option>
+            <option value="Comic Sans MS">Comic Sans</option>
+            <option value="Valorant">Valorant</option>
+        </select>
+        
+        <!-- Font Size Selection -->
+        <select class="toolbar-btn border border-cool-steel-200 bg-cool-steel-50 outline-none cursor-pointer py-1" onchange="formatFontSize(this.value)" title="Change Font Size">
+            <option value="8">8</option>
+            <option value="9">9</option>
+            <option value="10">10</option>
+            <option value="11">11</option>
+            <option value="12" selected="">12</option>
+            <option value="14">14</option>
+            <option value="16">16</option>
+            <option value="18">18</option>
+            <option value="20">20</option>
+            <option value="22">22</option>
+            <option value="24">24</option>
+            <option value="26">26</option>
+            <option value="28">28</option>
+            <option value="36">36</option>
+            <option value="42">42</option>
+        </select>
+
+        <!-- Divider -->
+        <div class="toolbar-divider"></div>
+        
+        <!-- 5. Bold -->
+        <button class="toolbar-btn" onclick="requestFormat('bold')" title="Bold">
+            <i class="fa-solid fa-bold"></i> Bold
+        </button>
+        
+        <!-- 6. Italicize -->
+        <button class="toolbar-btn" onclick="requestFormat('italic')" title="Italicize">
+            <i class="fa-solid fa-italic"></i> Italicize
+        </button>
+        
+        <!-- 7. Underline -->
+        <button class="toolbar-btn" onclick="requestFormat('underline')" title="Underline">
+            <i class="fa-solid fa-underline"></i> Underline
+        </button>
+
+        <!-- Divider -->
+        <div class="toolbar-divider"></div>
+        
+        <!-- 8. Text Color -->
+        <label class="toolbar-btn cursor-pointer" title="Text Color">
+            <i class="fa-solid fa-font"></i>
+            <input type="color" onchange="requestFormat('foreColor', this.value)" class="color-picker-input ml-1 p-0 border-0 bg-transparent cursor-pointer">
+        </label>
+        
+        <!-- 9. Highlight Color -->
+        <label class="toolbar-btn cursor-pointer" title="Highlight Color">
+            <i class="fa-solid fa-highlighter"></i>
+            <input type="color" value="#ffff00" onchange="requestFormat('backColor', this.value)" class="color-picker-input ml-1 p-0 border-0 bg-transparent cursor-pointer">
+        </label>
+        
+    </div>
+
+    <!-- Main Editor Area -->
+    <div class="flex-1 overflow-y-auto w-full relative pb-12">
+        <!-- Message box for user feedback -->
+        <div id="messageBox" class="fixed top-16 left-1/2 transform -translate-x-1/2 bg-cool-steel-900 text-cool-steel-50 px-6 py-3 rounded shadow-lg transition-opacity duration-300 opacity-0 pointer-events-none z-50"></div>
+
+        <!-- The paper -->
+        <div id="editor-container">
+            <div id="editor" contenteditable="true" spellcheck="false" placeholder="Start typing your document here...">
+                <p><br></p><p><br></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const editor = document.getElementById('editor');
+        const fileInput = document.getElementById('fileInput');
+        const messageBox = document.getElementById('messageBox');
+        
+        function showMessage(msg) {
+            messageBox.innerText = msg;
+            messageBox.style.opacity = '1';
+            setTimeout(() => {
+                messageBox.style.opacity = '0';
+            }, 3000);
+        }
+
+        // ==========================================
+        // Toolbar Functionalities
+        // ==========================================
+
+        function createNewDocument() {
+            editor.innerHTML = '<p><br></p>';
+            editor.focus();
+            showMessage("Created a new document.");
+        }
+
+        function triggerLoadDocument() {
+            fileInput.click();
+        }
+
+        function loadDocument(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            if (file.name.endsWith('.docx')) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const arrayBuffer = e.target.result;
+                    mammoth.convertToHtml({arrayBuffer: arrayBuffer})
+                        .then(function(result) {
+                            editor.innerHTML = result.value || '<p><br></p>';
+                            showMessage(`Loaded ${file.name}`);
+                        })
+                        .catch(function(err) {
+                            console.error(err);
+                            showMessage("Error loading .docx file.");
+                        });
+                };
+                reader.readAsArrayBuffer(file);
+            } else if (file.name.endsWith('.doc')) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const content = e.target.result;
+                    const bodyMatch = content.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+                    editor.innerHTML = bodyMatch ? bodyMatch[1] : content;
+                    showMessage(`Loaded ${file.name}`);
+                };
+                reader.readAsText(file);
+            } else {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const content = e.target.result;
+                    if (file.name.endsWith('.txt')) {
+                        const htmlContent = content.split('\n').map(line => `<p>${line || '<br>'}</p>`).join('');
+                        editor.innerHTML = htmlContent;
+                    } else {
+                        editor.innerHTML = content;
+                    }
+                    showMessage(`Loaded ${file.name}`);
+                };
+                reader.readAsText(file);
+            }
+            fileInput.value = "";
+        }
+
+        function exportToDocx() {
+            let fileName = prompt("Enter file name:", "document");
+            if (fileName === null) return;
+            
+            fileName = fileName.trim() || "document";
+            if (!fileName.toLowerCase().endsWith('.doc')) {
+                fileName += '.doc';
+            }
+
+            const content = editor.innerHTML;
+            const fullHtml = `
+                <html xmlns:o="urn:schemas-microsoft-com:office:office" 
+                    xmlns:w="urn:schemas-microsoft-com:office:word" 
+                    xmlns="http://www.w3.org/TR/REC-html40">
+                <head><meta charset="utf-8"><title>Document</title>
+                    <xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom><w:DoNotOptimizeForBrowser/></w:WordDocument></xml>
+                </head><body>${content}</body></html>
+            `;
+            try {
+                const blob = new Blob(['\ufeff', fullHtml], { type: 'application/msword' });
+                saveAs(blob, fileName); 
+                showMessage(`Document saved as ${fileName}`);
+            } catch (error) {
+                showMessage("Failed to export document.");
+            }
+        }
+
+        function exportToPdf() {
+            let fileName = prompt("Enter file name:", "document");
+            if (fileName === null) return; 
+            
+            fileName = fileName.trim() || "document";
+            if (!fileName.toLowerCase().endsWith('.pdf')) {
+                fileName += '.pdf';
+            }
+
+            const element = document.getElementById('editor-container');
+            const opt = {
+                margin:       [0, 0, 0, 0],
+                filename:     fileName,
+                image:        { type: 'jpeg', quality: 0.98 },
+                html2canvas:  { scale: 2, useCORS: true },
+                jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+            };
+
+            showMessage("Generating PDF...");
+            html2pdf().set(opt).from(element).save().then(() => {
+                showMessage(`Document exported as ${fileName}`);
+            });
+        }
+
+        // ==========================================
+        // Gamified Formatting Logic
+        // ==========================================
+        
+        let currentDifficulty = 'Easy';
+        let pendingCommand = null;
+        let pendingValue = null;
+        let testStartTime = null;
+        let testTargetText = "";
+        let currentRange = null;
+
+        document.addEventListener('selectionchange', () => {
+            const sel = window.getSelection();
+            if (sel.rangeCount > 0 && editor.contains(sel.anchorNode)) {
+                currentRange = sel.getRangeAt(0).cloneRange();
+            }
+        });
+
+        const blurbs = {
+            'Easy': [
+                "The courageous fallen! The anguished fallen! Their lives have meaning because we the living refuse to forget them! And as we ride to certain death, we trust our successors to do the same for us! Because my soldiers do not buckle or yield when faced with the cruelty of this world! My soldiers push forward! My soldiers scream out! My soldiers RAAAAAGE!", 
+                "He cried for me, I was his enemy yet still he cried for me and he called me his friend even though we had battled. He saved me, we were on different sides, but we were both Jinchuuriki. Between those who have experienced the same pain, there can be no hate!!", 
+                "So why do we have to fight each other? It's ridiculous. Canute and Ketil are the ones who want to fight. The two leaders should just play a game of hnefatafl and settle their issues. There is absolutely no reason... for all these people to gather and shed blood. We met for the first time today. You guys are not my enemies. I have no enemies."
+            ],
+            'Stupid': [
+                "To be, or not to be, that is the question: Whether 'tis nobler in the mind to suffer.",
+                "The mitochondria is the powerhouse of the cell, providing energy for all processes.",
+                "My friend, you look like you're in need of a skeleton with a jetpack. And not just any jetpack, the Fairfax Industries Chimera Mark 1."
+            ]
+        };
+
+        function setDifficulty(diff) {
+            currentDifficulty = diff;
+            document.getElementById('difficultyModal').style.display = 'none';
+            editor.focus();
+        }
+
+        function requestFormat(command, value = null) {
+            if (!currentRange || currentRange.collapsed) {
+                showMessage("Please highlight some text first to apply formatting!");
+                return;
+            }
+
+            pendingCommand = command;
+            pendingValue = value;
+            
+            // Randomly select a NEW prompt every time the user requests formatting
+            const list = blurbs[currentDifficulty] || blurbs['Easy'];
+            testTargetText = list[Math.floor(Math.random() * list.length)];
+            
+            document.getElementById('testBlurbDisplay').innerText = testTargetText;
+            document.getElementById('typingInput').value = "";
+            document.getElementById('typingInput').classList.remove('bg-dusty-mauve-200');
+            document.getElementById('typingStatus').innerText = "Start typing to begin...";
+            testStartTime = null;
+
+            if (currentDifficulty === 'Stupid') {
+                document.getElementById('wpmRequirement').style.display = 'block';
+            } else {
+                document.getElementById('wpmRequirement').style.display = 'none';
+            }
+
+            document.getElementById('typingModal').style.display = 'flex';
+            setTimeout(() => document.getElementById('typingInput').focus(), 100);
+        }
+
+        document.getElementById('typingInput').addEventListener('input', function(e) {
+            if (!testStartTime && this.value.length > 0) {
+                testStartTime = Date.now();
+                document.getElementById('typingStatus').innerText = "Typing...";
+            }
+
+            if (this.value === testTargetText) {
+                if (currentDifficulty === 'Stupid') {
+                    let timeMinutes = (Date.now() - testStartTime) / 60000;
+                    let wpm = (testTargetText.length / 5) / timeMinutes;
+                    if (wpm >= 65) {
+                        passTest(`Passed! WPM: ${Math.round(wpm)}`);
+                    } else {
+                        failTest(`Failed! WPM: ${Math.round(wpm)} (Needed 65+)`);
+                    }
+                } else {
+                    passTest("Passed!");
+                }
+            } else if (testTargetText.startsWith(this.value)) {
+                this.classList.remove('bg-dusty-mauve-200');
+            } else {
+                this.classList.add('bg-dusty-mauve-200');
+            }
+        });
+
+        function passTest(msg) {
+            hideTypingModal();
+            showMessage(msg);
+            
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(currentRange);
+
+            if (pendingCommand === 'foreColor' || pendingCommand === 'backColor') {
+                document.execCommand(pendingCommand, false, pendingValue);
+            } else {
+                document.execCommand(pendingCommand, false, null);
+            }
+            editor.focus();
+        }
+
+        function failTest(msg) {
+            hideTypingModal();
+            showMessage(msg);
+            editor.focus();
+        }
+
+        function cancelTest() {
+            hideTypingModal();
+            showMessage("Formatting cancelled.");
+            editor.focus();
+        }
+
+        function hideTypingModal() {
+            document.getElementById('typingModal').style.display = 'none';
+            document.getElementById('typingInput').blur();
+        }
+
+        function formatFont(fontName) {
+            if (currentRange) {
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(currentRange);
+            }
+            document.execCommand('fontName', false, fontName);
+            editor.focus();
+        }
+
+        function formatFontSize(size) {
+            if (currentRange) {
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(currentRange);
+            }
+
+            document.execCommand('fontSize', false, '7');
+            
+            const fontElements = editor.getElementsByTagName('font');
+            for (let i = 0; i < fontElements.length; i++) {
+                if (fontElements[i].size === '7') {
+                    fontElements[i].removeAttribute('size');
+                    fontElements[i].style.fontSize = size + 'pt';
+                    fontElements[i].style.lineHeight = 'normal'; 
+                }
+            }
+            editor.focus();
+        }
+
+        // ==========================================
+        // Restricting Keyboard Shortcuts & Editor Inputs
+        // ==========================================
+
+        editor.addEventListener('keydown', function(event) {
+            if (event.key === 'Tab') {
+                event.preventDefault();
+                document.execCommand('insertHTML', false, '&nbsp;&nbsp;&nbsp;&nbsp;');
+            }
+        });
+
+        document.addEventListener('keydown', function(event) {
+            if (event.ctrlKey || event.metaKey) {
+                const key = event.key.toLowerCase();
+                if (key === 'b') {
+                    event.preventDefault();
+                    showMessage("Keyboard shortcuts for Bold are disabled. Use the toolbar.");
+                }
+                if (key === 'i') {
+                    event.preventDefault();
+                    showMessage("Keyboard shortcuts for Italicize are disabled. Use the toolbar.");
+                }
+                if (key === 'u') {
+                    event.preventDefault();
+                    showMessage("Keyboard shortcuts for Underline are disabled. Use the toolbar.");
+                }
+            }
+        });
+
+        editor.focus();
+
+    </script>
+</body>
+</html>
